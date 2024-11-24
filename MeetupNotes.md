@@ -16,11 +16,12 @@
     - team_abbreviation_home
     - team_abbreviation_away
 - Features: 
-    - def rebounds
+    - assists
     - tot rebounds
     - 3pt percentage
     - free throws made
-    - plus_minus_home
+    - points
+    - tournovers
 
 # Action Items
 - Agregate some data for this initial POC model.  
