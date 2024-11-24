@@ -8,16 +8,7 @@
 - We can use a basic RNN, one with more features and one with less features. See which one performs better.
 - An alternative but acheivable goal would be to compare the RNN performance with a FNN / MLP model that does not use the sequence data.
 - Comparing RNN to normal feedforward network
-- RNN structure will be composed of two LSTMs for the home and away team to predict score, where there will be another layer that then takes those predictions as features to predict the final outcome:
-Home Team Last 5 Games → Home LSTM → Home Features
-
-                                         ↓
-
-                                   Combined Features → Neural Network → Predicted Scores
-
-                                         ↑
-
- Away Team Last 5 Games → Away LSTM → Away Features
+- RNN structure will be composed of two LSTMs for the home and away team to predict score, where there will be another layer that then takes those predictions as features to predict the final outcome
 
 
 # Features
@@ -43,6 +34,9 @@ Home Team Last 5 Games → Home LSTM → Home Features
           - ...
 - List of games to train off of from 2000 to 2020
 - Make sure that the previous ten games of each team is continuously being updated throughout the season as we train. Can games from prior season as well
+
+# Output
+- Model should output final score from home team perspective. For example, [128,120], home team scored 128 and away scored 100.
 
 # Action Items
 - Agregate some data for this initial POC model.  
