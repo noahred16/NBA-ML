@@ -31,6 +31,7 @@
           - Game 2: [21 points, 21 rebounds, 23% 3pt, ...]
           - ...
 - List of games to train off of from 2000 to 2020
+- Make sure that the previous ten games of each team is continuously being updated throughout the season as we train. Can games from prior season as well
 
 # Action Items
 - Agregate some data for this initial POC model.  
