@@ -130,12 +130,13 @@ def load_data_set(file_path="data_set.pkl"):
 
 
 # Main execution
-file_path = "data_set.pkl"
+file_name = "nba_train"
+year_start = 2000
+year_end = 2001 # using just 1 year for now
+file_path = f"{file_name}_{year_start}_{year_end}.pkl"
 train_loader, val_loader = load_data_set(file_path)
 
 if not train_loader or not val_loader:
-    year_start = 2000
-    year_end = 2001 # using just 1 year for now
     train_loader, val_loader = create_data_set(year_start, year_end)
     save_data_set(train_loader, val_loader, file_path)
 
