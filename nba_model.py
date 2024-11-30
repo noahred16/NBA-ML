@@ -1,3 +1,6 @@
+import os
+import pickle
+import torch
 from nba_api.stats.endpoints import leaguegamefinder
 import pandas as pd
 from collections import defaultdict
@@ -109,7 +112,43 @@ def create_data_set(year_start=2000, year_end=2020):
 
     return train_loader, val_loader
 
-# Create dataset and data loader and train the model
-train_loader, val_loader = create_data_set()
+# Save the dataset to a file
+def save_data_set(train_loader, val_loader, file_path="data_set.pkl"):
+    with open(file_path, "wb") as f:
+        pickle.dump((train_loader, val_loader), f)
+    print(f"Data set saved to {file_path}")
+
+# Load the dataset from a file
+def load_data_set(file_path="data_set.pkl"):
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            print(f"Loading data set from {file_path}")
+            return pickle.load(f)
+    return None, None
+
+
+
+
+# Main execution
+file_path = "data_set.pkl"
+train_loader, val_loader = load_data_set(file_path)
+
+if not train_loader or not val_loader:
+    year_start = 2000
+    year_end = 2001 # using just 1 year for now
+    train_loader, val_loader = create_data_set(year_start, year_end)
+    save_data_set(train_loader, val_loader, file_path)
+
+
+# Train or load the model
+model_path = "rnn_model_v1.pth"
+num_epochs = 10000
 model = NBAGamePredictor()
-train_losses, val_losses = model.train_model(num_epochs=10000, train_loader=train_loader, val_loader=val_loader)
+if os.path.exists(model_path):
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+    print("Model loaded!")
+else:
+    train_losses, val_losses = model.train_model(num_epochs=num_epochs, train_loader=train_loader, val_loader=val_loader)
+    torch.save(model.state_dict(), model_path)
+    print("Model trained and saved!")
