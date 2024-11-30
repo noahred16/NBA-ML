@@ -27,7 +27,7 @@ def build_training_data(games_df, features_to_keep, n_previous_games=10):
         if not (home_games.any() and away_games.any()):
             continue
 
-        print(f'Game occurrences: {game_occurrences}')
+        # print(f'Game occurrences: {game_occurrences}')
         home_row = game_occurrences[game_occurrences['MATCHUP'].str.contains('vs.')].iloc[0]
         away_row = game_occurrences[game_occurrences['MATCHUP'].str.contains('@')].iloc[0]
         home_team = home_row['TEAM_NAME']
@@ -60,12 +60,13 @@ def build_training_data(games_df, features_to_keep, n_previous_games=10):
     return training_samples
 
 # Go through and find all games between 2000 and 2020 and create a training set based off of them
-def create_data_set():
+# Test set can be generated in a similar way but using the years 2021-2024
+def create_data_set(year_start=2000, year_end=2020):
     # Create empty list to store all dataframes
     all_games_list = []
     
-    # Loop through seasons from 2000 to 2020
-    for season in range(2000, 2001):
+    # For training, loop through seasons
+    for season in range(year_start, year_end):
         season_id = f"{season}-{str(season+1)[-2:]}"  # Format: "2000-01", "2001-02", etc.
         game_finder = leaguegamefinder.LeagueGameFinder(
             season_nullable=season_id,
@@ -98,7 +99,7 @@ def create_data_set():
     )
 
     print(f'Training samples: {len(train_samples)}')
-    print(f'Validation samplesL {len(val_samples)}')
+    print(f'Validation samples: {len(val_samples)}')
 
     # Crsate the separate datasets for training and validation and return those
     train_dataset = NBAGameDataset(train_samples)
