@@ -2,7 +2,9 @@ from nba_api.stats.endpoints import leaguegamefinder
 import pandas as pd
 from collections import defaultdict
 from NBAGameDataset import NBAGameDataset
+from NBAGamePredictor import NBAGamePredictor
 from torch.utils.data import DataLoader
+from sklearn.model_selection import train_test_split
 
 # Build the training data to input into the model 
 def build_training_data(games_df, features_to_keep, n_previous_games=10):
@@ -87,20 +89,26 @@ def create_data_set():
     ]
 
     training_data = build_training_data(games_df, features_to_keep)
-    return training_data
 
-# Create dataset and data loader
-data = create_data_set()
-dataset = NBAGameDataset(data)
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    # Split the data into training and validation samples
+    train_samples, val_samples = train_test_split(
+        training_data,
+        test_size=0.2, # Validation set 20% of all samples
+        random_state=42
+    )
 
-batch = next(iter(dataloader))
-print("\nBatch shapes:")
-print(f"Home sequences: {batch['home_sequence'].shape}")
-print(f"Away sequences: {batch['away_sequence'].shape}")
-print(f"Targets: {batch['target'].shape}")
+    print(f'Training samples: {len(train_samples)}')
+    print(f'Validation samplesL {len(val_samples)}')
 
-# Check normalized values
-print("\nNormalized sample values:")
-print(f"Home team first game features: {batch['home_sequence'][0][0]}")
-print(f"Away team first game features: {batch['away_sequence'][0][0]}")
+    # Crsate the separate datasets for training and validation and return those
+    train_dataset = NBAGameDataset(train_samples)
+    val_dataset = NBAGameDataset(val_samples)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+
+    return train_loader, val_loader
+
+# Create dataset and data loader and train the model
+train_loader, val_loader = create_data_set()
+model = NBAGamePredictor()
+train_losses, val_losses = model.train_model(num_epochs=10000, train_loader=train_loader, val_loader=val_loader)
