@@ -160,3 +160,11 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Pickle (*.pkl files) is a module used for serializing and deserializing Python objects
+*.pkl
+
+# PyTorch file (*.pth) is a serialized representation of a model's state dictionary.
+#  It contains the learned parameters (weights and biases) of the model,
+#  allowing you to save and load your trained models easily
+*.pth
