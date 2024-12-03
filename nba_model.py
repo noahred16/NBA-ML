@@ -10,9 +10,11 @@ from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 
 # Build the training data to input into the model 
-def build_training_data(games_df, features_to_keep, n_previous_games=10):
+def build_training_data(games_df, features_to_keep, n_previous_games=10, n_previous_matchups=2):
     # initialize dict to store the games
     team_histories = defaultdict(list)
+    # dictionary to store the matchup histories between teams
+    matchup_histories = defaultdict(list)
     training_samples = []
     # Get all the unique game IDs so we can sort through them
     game_ids = games_df['GAME_ID'].unique()
@@ -30,22 +32,27 @@ def build_training_data(games_df, features_to_keep, n_previous_games=10):
         if not (home_games.any() and away_games.any()):
             continue
 
-        # print(f'Game occurrences: {game_occurrences}')
         home_row = game_occurrences[game_occurrences['MATCHUP'].str.contains('vs.')].iloc[0]
         away_row = game_occurrences[game_occurrences['MATCHUP'].str.contains('@')].iloc[0]
         home_team = home_row['TEAM_NAME']
         away_team = away_row['TEAM_NAME']
 
+        # Create a key to store the specific matchup for matchup history
+        matchup_key = tuple(sorted([home_team, away_team]))
+
         # Now create training data if both teams have enough history
-        if (len(team_histories[home_team]) >= n_previous_games and len(team_histories[away_team]) >= n_previous_games):
+        if len(team_histories[home_team]) >= n_previous_games and len(team_histories[away_team]) >= n_previous_games and len(matchup_histories[matchup_key]) >= n_previous_matchups:
             # Get the last ten games
             home_history = team_histories[home_team][-n_previous_games:]
             away_history = team_histories[away_team][-n_previous_games:]
+            # Get the previous matchups
+            previous_matchups = matchup_histories[matchup_key][-n_previous_matchups:]
 
             # Create training set
             training_samples.append({
                 'home_team_history': home_history,
                 'away_team_history': away_history,
+                'previous_matchups': previous_matchups,
                 'target': {
                     'home_score': home_row['PTS'],
                     'away_score': away_row['PTS']
@@ -53,11 +60,20 @@ def build_training_data(games_df, features_to_keep, n_previous_games=10):
                 'game_date': home_row['GAME_DATE']
             })
         
-        # Add the game to both teams histories
+        # Add the game to both teams histories and matchup history
         home_stats = {feature: home_row[feature] for feature in features_to_keep}
         away_stats = {feature: away_row[feature] for feature in features_to_keep}
         team_histories[home_team].append(home_stats)
         team_histories[away_team].append(away_stats)
+
+        matchup_stats = {
+            'home_team': home_team,
+            'away_team': away_team,
+            'home_stats': home_stats,
+            'away_stats': away_stats,
+            'game_date': home_row['GAME_DATE']
+        }
+        matchup_histories[matchup_key].append(matchup_stats)
     
     print(f"Created {len(training_samples)} training samples")
     return training_samples
@@ -127,12 +143,10 @@ def load_data_set(file_path="data_set.pkl"):
     return None, None
 
 
-
-
 # Main execution
 file_name = "nba_train"
-year_start = 2000
-year_end = 2001 # using just 1 year for now
+year_start = 2018
+year_end = 2020 # using just 1 year for now
 file_path = f"{file_name}_{year_start}_{year_end}.pkl"
 train_loader, val_loader = load_data_set(file_path)
 
@@ -153,3 +167,17 @@ else:
     train_losses, val_losses = model.train_model(num_epochs=num_epochs, train_loader=train_loader, val_loader=val_loader)
     torch.save(model.state_dict(), model_path)
     print("Model trained and saved!")
+
+# Now evaluate the model
+test_loader = create_data_set(year_start=2021, year_end=2022)[1]
+
+# Run the evaluations
+predictions = model.evaluate_model(test_loader)
+
+for i, pred in enumerate(predictions[:5]):  # Look at first 5 predictions
+    print(f"\nGame {i+1}:")
+    print(f"Predicted scores: Home {pred['Predicted']['Home']:.1f} - Away {pred['Predicted']['Away']:.1f}")
+    print(f"Actual scores: Home {pred['Actual']['Home']:.1f} - Away {pred['Actual']['Away']:.1f}")
+    print(f"Margin Error: {pred['Margin Error']:.1f}")
+    print(f"Score Error: {pred['Score Error']:.1f}")
+    print(f"Predicted Winner Correctly: {pred['Correct Winner']}")

@@ -1,58 +1,58 @@
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
 class NBAGamePredictor(nn.Module):
-
     # Constructs the model (hidden size is the memory capacity of the RNN, too high will lead to overfitting and too low will be too basic)
     def __init__(self, input_size=11, hidden_size=64):
         super().__init__()
 
-        # LSTM for home team
-        self.home_lstm = nn.LSTM(
-            input_size=input_size,
+        # LSTM framework for the input
+        self.lstm = nn.LSTM(
+            input_size=input_size*2, # handle the size for both teams' features
             hidden_size=hidden_size,
-            num_layers=2,
-            batch_first=True
+            num_layers=3,
+            batch_first=True,
+            dropout=0.2
         )
 
-        # LSTM for away team
-        self.away_lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=2,
-            batch_first=True
-        )
-
-        # Network for combining the features and creating an output
+        # Take in the LSTMs hidden values and predict that as a score
         self.predictor = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size), # Combines the team features, first layer
+            nn.Linear(hidden_size, hidden_size),  # Make wider
             nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size // 2), # Second layer
-            nn.ReLU(),
-            nn.Linear(hidden_size // 2, 2) # Predict both teams scores (output layer)
+            nn.BatchNorm1d(hidden_size),  # Add batch normalization
+            nn.Dropout(0.2),
+            nn.Linear(hidden_size, 2)
         )
+
+        # Debug: Print initial predictor weights
+        print("\nInitial predictor weights:")
+        for idx, layer in enumerate(self.predictor):
+            if isinstance(layer, nn.Linear):
+                print(f"Layer {idx} weight norm: {layer.weight.norm().item()}")
 
     # Defines how data flows through the model, automatically is called when the model is instantiated
-    def forward(self, home_seq, away_seq):
-        # Process home and away team sequences
-        home_out, (home_hidden, _) = self.home_lstm(home_seq)
-        away_out, (away_hidden, _) = self.away_lstm(away_seq)
+    def forward(self, home_seq, away_seq, matchup_seq):
 
-        # Use the final hidden states
-        home_features = home_hidden[-1]
-        away_features = away_hidden[-1]
+        team_combined = torch.cat([home_seq, away_seq], dim=2)
 
-        # Combine the features and predict
-        combined = torch.cat([home_features, away_features], dim=1)
-        scores = self.predictor(combined)
+        combined_seq = torch.cat([team_combined, matchup_seq], dim=1)
+
+        _, (hidden, _) = self.lstm(combined_seq)
+
+        scores = self.predictor(hidden[-1])
 
         return scores
 
     # A function that trains the model based on passed in iteration amounts as well as a patience counter. Uses validation for early stopping to prevent overfitting
     def train_model(self, num_epochs, train_loader, val_loader, patience=5):
+    # At start of training, check a few batches
+
         # Instantiate mean squared error and optimizer
         criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
+
+        initial_weights = {name: param.clone().detach() for name, param in self.named_parameters()}
 
         # Track the losses
         training_losses = []
@@ -60,7 +60,7 @@ class NBAGamePredictor(nn.Module):
 
         # Early stopping variables
         best_val_loss = float('inf')
-        patience_counter = 0 
+        patience_counter = 0
         best_model_state = None
 
         # The training loop
@@ -69,16 +69,13 @@ class NBAGamePredictor(nn.Module):
             total_train_loss = 0
 
             # Iterate for data in train loader
-            for batch in train_loader:
-                # Feed data and do forward pass
+            for batch_idx, batch in enumerate(train_loader):
                 predictions = self(batch['home_sequence'], batch['away_sequence'])
-
-                # Calculate the loss
                 loss = criterion(predictions, batch['target'])
 
-                # Backpropagation
                 optimizer.zero_grad()
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
                 optimizer.step()
                 total_train_loss += loss.item()
             # Print out data for iteration
@@ -100,7 +97,6 @@ class NBAGamePredictor(nn.Module):
             print(f'Epoch {epoch+1}/{num_epochs}')
             print(f'Training Loss: {avg_train_loss:.4f}')
             print(f'Validation Loss: {avg_val_loss:.4f}')
-        
 
             # Check for early stopping
             if avg_val_loss < best_val_loss:
@@ -110,11 +106,91 @@ class NBAGamePredictor(nn.Module):
             else:
                 patience_counter += 1
                 print(f'Early stopping counter: {patience_counter}/{patience}')
-            
+
             # Quit training if patience has been met
             if patience_counter >= patience:
                 print('Early stopping triggered!')
                 self.load_state_dict(best_model_state) # Restore the best model state
                 break
-        
+
+        # Plot the training and validation losses
+        plt.figure(figsize=(10,6))
+        plt.plot(training_losses, label='Training Loss', marker='', linestyle='-', linewidth=2, color='blue')
+        plt.plot(validation_losses, label='Validation Loss', marker='', linestyle='-', linewidth=2, color='red')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Training and Validation Loss Over Time')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
         return training_losses, validation_losses
+
+    # A function that predicts and evaluates a model
+    def evaluate_model(self, test_loader):
+        # Initialize all of the stats used to evaluate the model
+        self.eval()
+        total_games = 0
+        total_margin_error = 0
+        total_score_error = 0
+        correct_winner_predictions = 0
+
+        predictions_list = []
+
+        # Go through each batch and analyze
+        with torch.no_grad():
+            for batch in test_loader:
+                # Get the model predictions and convert to numpy
+                predicted_scores = self(batch['home_sequence'], batch['away_sequence'])
+                actual_scores = batch['target']
+                pred_scores = predicted_scores.numpy()
+                act_scores = actual_scores.numpy()
+
+                batch_size = pred_scores.shape[0]
+                total_games += batch_size
+
+                # Now go through every game in the batch and evaluate results
+                for i in range(batch_size):
+                    pred_home, pred_away = pred_scores[i]
+                    actual_home, actual_away = act_scores[i]
+
+                    # Prediction errors
+                    pred_margin = pred_home - pred_away
+                    actual_margin = actual_home - actual_away
+                    margin_error = abs(pred_margin - actual_margin)
+
+                    # Score errors
+                    home_score_error = abs(pred_home - actual_home)
+                    away_score_error = abs(pred_away - actual_away)
+                    avg_score_error = (home_score_error + away_score_error) / 2
+
+                    total_margin_error += margin_error
+                    total_score_error += avg_score_error
+
+                    # Check winner prediction
+                    pred_winner = 'home' if pred_margin > 0 else 'away'
+                    actual_winner = 'home' if actual_margin > 0 else 'away'
+                    if pred_winner == actual_winner:
+                        correct_winner_predictions += 1
+
+                    # Store prediction details
+                    predictions_list.append({
+                        'Predicted': {'Home': pred_home, 'Away': pred_away},
+                        'Actual': {'Home': actual_home, 'Away': actual_away},
+                        'Margin Error': margin_error,
+                        'Score Error': avg_score_error,
+                        'Correct Winner': pred_winner == actual_winner
+                    })
+
+        # Calculate average errors
+        avg_margin_error = total_margin_error / total_games
+        avg_score_error = total_score_error / total_games
+        winner_accuracy = (correct_winner_predictions / total_games) * 100
+
+        print(f"\nModel Evaluation Results:")
+        print(f"Total Games Evaluated: {total_games}")
+        print(f"Average Margin Error: {avg_margin_error:.2f} points")
+        print(f"Average Score Error: {avg_score_error:.2f} points")
+        print(f"Winner Prediction Accuracy: {winner_accuracy:.2f}%")
+
+        return predictions_list
