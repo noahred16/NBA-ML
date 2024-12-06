@@ -7,9 +7,12 @@ class NBAGamePredictor(nn.Module):
     def __init__(self, input_size=11, hidden_size=64):
         super().__init__()
 
+        # Create an embedding layer for sequence type labels, can mess around with the embedding dimensions
+        self.sequence_embedding = nn.Embedding(num_embeddings=3, embedding_dim=8)
+
         # LSTM framework for the input
         self.lstm = nn.LSTM(
-            input_size=input_size*2, # handle the size for both teams' features
+            input_size=input_size*2 + 8, # handle the size for both teams' features
             hidden_size=hidden_size,
             num_layers=3,
             batch_first=True,
@@ -33,10 +36,24 @@ class NBAGamePredictor(nn.Module):
 
     # Defines how data flows through the model, automatically is called when the model is instantiated
     def forward(self, home_seq, away_seq, matchup_seq):
+        batch_size = home_seq.size()
 
-        team_combined = torch.cat([home_seq, away_seq], dim=2)
+        # Create the sequence type labels
+        home_labels = torch.zeros(batch_size, home_seq.size(1), dtype=torch.long)
+        away_labels = torch.zeros(batch_size, away_seq.size(1), dtype=torch.long)
+        matchup_labels = torch.full((batch_size, matchup_seq.size(1)), 2, dtype=torch.long)
 
-        combined_seq = torch.cat([team_combined, matchup_seq], dim=1)
+        # get the embeddings for each sequence type
+        home_embed = self.sequence_embedding(home_labels)
+        away_embed = self.sequence_embedding(away_labels)
+        matchup_embed = self.sequence_embedding(matchup_labels)
+
+        # Concatenate the features
+        home_combined = torch.cat([home_seq, home_embed], dim=2)
+        away_combined = torch.cat([away_seq, away_embed], dim=2)
+        matchup_combined = torch.cat([matchup_seq, matchup_embed], dim=2)
+
+        combined_seq = torch.cat([home_combined, away_combined, matchup_combined], dim=1)
 
         _, (hidden, _) = self.lstm(combined_seq)
 
