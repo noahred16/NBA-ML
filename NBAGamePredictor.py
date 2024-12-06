@@ -12,7 +12,7 @@ class NBAGamePredictor(nn.Module):
 
         # LSTM framework for the input
         self.lstm = nn.LSTM(
-            input_size=input_size*2 + 8, # handle the size for both teams' features
+            input_size=input_size + 8, # handle the size for both teams' features
             hidden_size=hidden_size,
             num_layers=3,
             batch_first=True,
@@ -36,24 +36,37 @@ class NBAGamePredictor(nn.Module):
 
     # Defines how data flows through the model, automatically is called when the model is instantiated
     def forward(self, home_seq, away_seq, matchup_seq):
-        batch_size = home_seq.size()
-
-        # Create the sequence type labels
-        home_labels = torch.zeros(batch_size, home_seq.size(1), dtype=torch.long)
-        away_labels = torch.zeros(batch_size, away_seq.size(1), dtype=torch.long)
-        matchup_labels = torch.full((batch_size, matchup_seq.size(1)), 2, dtype=torch.long)
-
-        # get the embeddings for each sequence type
+        batch_size = home_seq.shape[0]
+    
+        # For the 4 matchup sequences split into home and away
+        matchup_home = matchup_seq[:, 0::2, :]  
+        matchup_away = matchup_seq[:, 1::2, :]  
+        
+        # Create labels using correct tensor dimensions
+        home_labels = torch.zeros((batch_size, home_seq.shape[1]), dtype=torch.long)
+        away_labels = torch.ones((batch_size, away_seq.shape[1]), dtype=torch.long)
+        matchup_home_labels = torch.full((batch_size, matchup_home.shape[1]), 2, dtype=torch.long)  # 2 sequences
+        matchup_away_labels = torch.full((batch_size, matchup_away.shape[1]), 2, dtype=torch.long)  # 2 sequences
+        
+        # Get embeddings for each sequence type
         home_embed = self.sequence_embedding(home_labels)
         away_embed = self.sequence_embedding(away_labels)
-        matchup_embed = self.sequence_embedding(matchup_labels)
-
-        # Concatenate the features
+        matchup_home_embed = self.sequence_embedding(matchup_home_labels)
+        matchup_away_embed = self.sequence_embedding(matchup_away_labels)
+        
+        # Combine features with their embeddings
         home_combined = torch.cat([home_seq, home_embed], dim=2)
         away_combined = torch.cat([away_seq, away_embed], dim=2)
-        matchup_combined = torch.cat([matchup_seq, matchup_embed], dim=2)
-
-        combined_seq = torch.cat([home_combined, away_combined, matchup_combined], dim=1)
+        matchup_home_combined = torch.cat([matchup_home, matchup_home_embed], dim=2)
+        matchup_away_combined = torch.cat([matchup_away, matchup_away_embed], dim=2)
+        
+        # Combine all sequences
+        combined_seq = torch.cat([
+            home_combined,          # Regular home games (19 features)
+            away_combined,          # Regular away games (19 features)
+            matchup_home_combined,  # Home stats from matchups (19 features)
+            matchup_away_combined   # Away stats from matchups (19 features)
+        ], dim=1)
 
         _, (hidden, _) = self.lstm(combined_seq)
 
@@ -87,7 +100,7 @@ class NBAGamePredictor(nn.Module):
 
             # Iterate for data in train loader
             for batch_idx, batch in enumerate(train_loader):
-                predictions = self(batch['home_sequence'], batch['away_sequence'])
+                predictions = self(batch['home_sequence'], batch['away_sequence'], batch['matchup_history'])
                 loss = criterion(predictions, batch['target'])
 
                 optimizer.zero_grad()
@@ -104,7 +117,7 @@ class NBAGamePredictor(nn.Module):
             total_val_loss = 0
             with torch.no_grad():
                 for batch in val_loader:
-                    predictions = self(batch['home_sequence'], batch['away_sequence'])
+                    predictions = self(batch['home_sequence'], batch['away_sequence'], batch['matchup_history'])
                     val_loss = criterion(predictions, batch['target'])
                     total_val_loss += val_loss
             avg_val_loss = total_val_loss / len(val_loader)
@@ -158,7 +171,7 @@ class NBAGamePredictor(nn.Module):
         with torch.no_grad():
             for batch in test_loader:
                 # Get the model predictions and convert to numpy
-                predicted_scores = self(batch['home_sequence'], batch['away_sequence'])
+                predicted_scores = self(batch['home_sequence'], batch['away_sequence'], batch['matchup_history'])
                 actual_scores = batch['target']
                 pred_scores = predicted_scores.numpy()
                 act_scores = actual_scores.numpy()
