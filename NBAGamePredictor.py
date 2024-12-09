@@ -37,17 +37,17 @@ class NBAGamePredictor(nn.Module):
     # Defines how data flows through the model, automatically is called when the model is instantiated
     def forward(self, home_seq, away_seq, matchup_seq):
         batch_size = home_seq.shape[0]
-    
-        # For the 4 matchup sequences split into home and away
-        matchup_home = matchup_seq[:, 0::2, :]  
+
+        # For the 4 matchup sequences, split into home and away
+        matchup_home = matchup_seq[:, 0::2, :] 
         matchup_away = matchup_seq[:, 1::2, :]  
-        
+
         # Create labels using correct tensor dimensions
         home_labels = torch.zeros((batch_size, home_seq.shape[1]), dtype=torch.long)
         away_labels = torch.ones((batch_size, away_seq.shape[1]), dtype=torch.long)
         matchup_home_labels = torch.full((batch_size, matchup_home.shape[1]), 2, dtype=torch.long)  # 2 sequences
         matchup_away_labels = torch.full((batch_size, matchup_away.shape[1]), 2, dtype=torch.long)  # 2 sequences
-        
+
         # Get embeddings for each sequence type
         home_embed = self.sequence_embedding(home_labels)
         away_embed = self.sequence_embedding(away_labels)
@@ -59,7 +59,7 @@ class NBAGamePredictor(nn.Module):
         away_combined = torch.cat([away_seq, away_embed], dim=2)
         matchup_home_combined = torch.cat([matchup_home, matchup_home_embed], dim=2)
         matchup_away_combined = torch.cat([matchup_away, matchup_away_embed], dim=2)
-        
+
         # Combine all sequences
         combined_seq = torch.cat([
             home_combined,          # Regular home games (19 features)
@@ -80,7 +80,7 @@ class NBAGamePredictor(nn.Module):
 
         # Instantiate mean squared error and optimizer
         criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
 
         initial_weights = {name: param.clone().detach() for name, param in self.named_parameters()}
 
